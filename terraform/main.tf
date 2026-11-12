@@ -1,8 +1,4 @@
 terraform {
-  backend "local" {
-    workspace_dir = "/var/lib/semaphore/tfstate"
-  }
-
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"
@@ -52,7 +48,7 @@ locals {
     large  = { template = 9003, cores = 4, memory = 8192 }
   }
   size    = local.sizes[var.vm_size]
-  ssh_key = trimspace(var.ssh_public_key)
+  ssh_key = trimspace(file("${path.module}/outils.pub"))
 }
 
 # ---------- Connexion à Proxmox ----------
@@ -111,8 +107,4 @@ output "vm_id" {
 
 output "vm_ip" {
   value = var.vm_ip
-}
-
-variable "ssh_public_key" {
-  type = string
 }
