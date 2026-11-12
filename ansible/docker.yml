@@ -1,0 +1,23 @@
+---
+- name: Installer et démarrer Docker
+  hosts: vms
+  become: true
+  tasks:
+    - name: Installer le paquet docker.io
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Démarrer Docker et l'activer au démarrage
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Autoriser l'utilisateur debian à utiliser Docker
+      ansible.builtin.user:
+        name: debian
+        groups: docker
+        append: true
