@@ -15,14 +15,29 @@ done
 [[ "${VM_SIZE:-}" =~ ^(small|medium|large)$ ]] || { echo "Taille invalide (small, medium ou large)"; exit 1; }
 [[ "${VM_IP:-}" =~ ^172\.16\.117\.(17[0-9])$ ]] || { echo "IP invalide : plage autorisee 172.16.117.170 a .179"; exit 1; }
 
-cd "$(dirname "$0")/../terraform"
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p /var/lib/semaphore/tfstate
 START=$(date +%s)
-echo "Variables TF_VAR_ recues : $(env | grep -o '^TF_VAR_[A-Za-z_]*' | tr '\n' ' ')"
 
+echo "=== 1/2 Terraform : creation de la VM $VM_NAME ($VM_SIZE) ==="
+cd "$REPO_DIR/terraform"
 terraform init -input=false
 terraform workspace select -or-create "$VM_NAME"
 terraform apply -input=false -auto-approve \
   -var "vm_name=$VM_NAME" -var "vm_size=$VM_SIZE" -var "vm_ip=$VM_IP"
+T_TF=$(( $(date +%s) - START ))
+echo "Terraform termine en $T_TF secondes"
 
-echo "VM $VM_NAME ($VM_SIZE) prete sur $VM_IP en $(( $(date +%s) - START )) secondes"
+echo "=== 2/2 Ansible : configuration de la VM ==="
+for i in $(seq 1 30); do
+  if nc -z -w2 "$VM_IP" 22; then break; fi
+  sleep 5
+done
+INV="$(mktemp)"
+printf '[vms]\n' > "$INV"
+cd "$REPO_DIR/ansible"
+ansible-playbook -i "$INV" configure_vm.yml -e "target_ip=$VM_IP"
+rm -f "$INV"
+
+TOTAL=$(( $(date +%s) - START ))
+echo "VM $VM_NAME ($VM_SIZE) creee et configuree sur $VM_IP en $TOTAL secondes (Terraform $T_TF s, Ansible $(( TOTAL - T_TF )) s)"
