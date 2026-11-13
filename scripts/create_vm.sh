@@ -18,6 +18,7 @@ done
 cd "$(dirname "$0")/../terraform"
 mkdir -p /var/lib/semaphore/tfstate
 START=$(date +%s)
+echo "Variables TF_VAR_ recues : $(env | grep -o '^TF_VAR_[A-Za-z_]*' | tr '\n' ' ')"
 
 terraform init -input=false
 terraform workspace select -or-create "$VM_NAME"
