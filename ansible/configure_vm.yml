@@ -7,7 +7,7 @@
       ansible.builtin.add_host:
         name: "{{ target_ip }}"
         groups: vms
-        ansible_user: debian
+        ansible_user: "{{ target_user | default('debian') }}"
         ansible_python_interpreter: /usr/bin/python3
         ansible_ssh_private_key_file: /var/lib/semaphore/vm_key
         ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes"
@@ -31,6 +31,6 @@
 
     - name: Autoriser l'utilisateur debian à utiliser Docker
       ansible.builtin.user:
-        name: debian
+        name: "{{ target_user | default('debian') }}"
         groups: docker
         append: true
