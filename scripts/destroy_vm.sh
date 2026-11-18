@@ -38,6 +38,12 @@ if ! terraform workspace list | sed 's/^[* ]*//' | grep -qx "$VM_NAME"; then
   exit 1
 fi
 
+if [ "$VM_CLOUD" = "aws" ]; then
+  # Terraform lit le VPC du client : l'id vient du nom u<id>-... (le VPC lui-meme n'est jamais supprime ici)
+  [[ "$VM_NAME" =~ ^u([1-9][0-9]{0,2})- ]] || { echo "Nom AWS sans prefixe u<id>- : suppression impossible avec ce script"; exit 1; }
+  DESTROY_ARGS+=(-var "client_id=${BASH_REMATCH[1]}")
+fi
+
 terraform workspace select "$VM_NAME"
 terraform destroy -input=false -auto-approve "${DESTROY_ARGS[@]}"
 terraform workspace select default

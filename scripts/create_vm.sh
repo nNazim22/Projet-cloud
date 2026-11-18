@@ -18,6 +18,12 @@ done
 if [ "$VM_CLOUD" = "aws" ] && [ "$VM_SIZE" = "large" ]; then
   echo "Taille large indisponible sur AWS (small ou medium)"; exit 1
 fi
+if [ "$VM_CLOUD" = "aws" ]; then
+  # Le nom commence par u<id>- (id du client dans le portail) : l'id fixe le VPC du client
+  [[ "$VM_NAME" =~ ^u([1-9][0-9]{0,2})- ]] || { echo "Nom AWS invalide : il doit commencer par u<id>- (exemple u3-web01)"; exit 1; }
+  CLIENT_ID="${BASH_REMATCH[1]}"
+  { [ "$CLIENT_ID" -le 255 ] && [ "$CLIENT_ID" -ne 42 ] && [ "$CLIENT_ID" -ne 43 ]; } || { echo "Identifiant client $CLIENT_ID impossible pour un VPC AWS (1 a 255, sauf 42 et 43)"; exit 1; }
+fi
 if [ "$VM_CLOUD" = "proxmox" ]; then
   [[ "${VM_IP:-}" =~ ^172\.16\.117\.(17[0-9])$ ]] || { echo "IP invalide : plage autorisee 172.16.117.170 a .179"; exit 1; }
 fi
@@ -45,12 +51,22 @@ else
   echo "SSH autorise depuis : $TF_VAR_admin_cidr"
   INSTANCE_TYPE="t3.micro"
   if [ "$VM_SIZE" = "medium" ]; then INSTANCE_TYPE="t3.small"; fi
+
+  # Reseau du client : un VPC par client, cree a sa premiere commande puis reutilise (etat separe de celui des VM)
+  echo "--- Reseau du client u$CLIENT_ID : VPC bits-u$CLIENT_ID (10.$CLIENT_ID.0.0/16), cree s'il n'existe pas ---"
+  mkdir -p /var/lib/semaphore/tfstate-aws-vpc
+  cd "$REPO_DIR/aws-vpc"
+  terraform init -input=false
+  terraform workspace select -or-create "vpc-u$CLIENT_ID"
+  terraform apply -input=false -auto-approve -lock-timeout=120s -var "client_id=$CLIENT_ID"
+
+  echo "--- VM $VM_NAME dans le VPC du client ---"
   mkdir -p /var/lib/semaphore/tfstate-aws
   cd "$REPO_DIR/aws"
   terraform init -input=false
   terraform workspace select -or-create "$VM_NAME"
   terraform apply -input=false -auto-approve \
-    -var "vm_name=$VM_NAME" -var "instance_type=$INSTANCE_TYPE"
+    -var "vm_name=$VM_NAME" -var "instance_type=$INSTANCE_TYPE" -var "client_id=$CLIENT_ID"
   TARGET_IP="$(terraform output -raw vm_ip_publique)"
   SSH_USER="admin"
 fi

@@ -39,23 +39,48 @@ variable "admin_cidr" {
   type = string
 }
 
+# Identifiant du client (nom de VM u<id>-nom) : designe son VPC, cree au prealable par aws-vpc/
+variable "client_id" {
+  type = number
+  validation {
+    condition     = var.client_id == floor(var.client_id) && var.client_id >= 1 && var.client_id <= 255 && !contains([42, 43], var.client_id)
+    error_message = "client_id doit etre un entier de 1 a 255, sauf 42 et 43."
+  }
+}
+
 # ---------- Fournisseur ----------
 provider "aws" {
   region = var.region
 }
 
-# ---------- Lectures : identité, réseau par défaut, image Debian ----------
+# ---------- Lectures : identité, réseau du client, image Debian ----------
 data "aws_caller_identity" "moi" {}
 
-data "aws_vpc" "defaut" {
-  default = true
+# Pas de repli sur le VPC par defaut : si le VPC du client n'existe pas, Terraform s'arrete.
+data "aws_vpc" "client" {
+  filter {
+    name   = "tag:Name"
+    values = ["bits-u${var.client_id}"]
+  }
+
+  filter {
+    name   = "tag:Projet"
+    values = ["bits-cloud"]
+  }
 }
 
-data "aws_subnets" "defaut" {
+data "aws_subnet" "public" {
+  vpc_id = data.aws_vpc.client.id
+
   filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.defaut.id]
+    name   = "tag:Name"
+    values = ["bits-u${var.client_id}-public"]
   }
+}
+
+data "aws_security_group" "interne" {
+  vpc_id = data.aws_vpc.client.id
+  name   = "bits-u${var.client_id}-interne"
 }
 
 data "aws_ami" "debian" {
@@ -82,7 +107,7 @@ resource "aws_key_pair" "lab" {
 resource "aws_security_group" "ssh" {
   name        = "bits-${var.vm_name}-ssh"
   description = "SSH depuis le laboratoire uniquement"
-  vpc_id      = data.aws_vpc.defaut.id
+  vpc_id      = data.aws_vpc.client.id
 
   ingress {
     description = "SSH labo"
@@ -103,8 +128,8 @@ resource "aws_security_group" "ssh" {
 resource "aws_instance" "vm" {
   ami                         = data.aws_ami.debian.id
   instance_type               = var.instance_type
-  subnet_id                   = data.aws_subnets.defaut.ids[0]
-  vpc_security_group_ids      = [aws_security_group.ssh.id]
+  subnet_id                   = data.aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.ssh.id, data.aws_security_group.interne.id]
   key_name                    = aws_key_pair.lab.key_name
   associate_public_ip_address = true
 
@@ -120,6 +145,7 @@ resource "aws_instance" "vm" {
   tags = {
     Name   = var.vm_name
     Projet = "bits-cloud"
+    Client = "u${var.client_id}"
   }
 }
 
@@ -138,4 +164,8 @@ output "vm_id" {
 
 output "vm_ip_publique" {
   value = aws_instance.vm.public_ip
+}
+
+output "vm_ip_privee" {
+  value = aws_instance.vm.private_ip
 }
